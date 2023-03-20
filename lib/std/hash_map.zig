@@ -224,7 +224,7 @@ pub fn verifyContext(comptime RawContext: type, comptime PseudoKey: type, compti
                             errors = errors ++ ", but is " ++ @typeName(Self);
                         }
                     }
-                    if (func.args[1].arg_type != null and func.args[1].arg_type.? != PseudoKey) {
+                    if (func.args[1].arg_type != null and func.args[1].arg_type.? != PseudoKey and func.args[1].arg_type.? != *const PseudoKey) {
                         if (!emitted_signature) {
                             errors = errors ++ lazy.err_invalid_hash_signature;
                             emitted_signature = true;
@@ -300,14 +300,14 @@ pub fn verifyContext(comptime RawContext: type, comptime PseudoKey: type, compti
                             errors = errors ++ ", but is " ++ @typeName(Self);
                         }
                     }
-                    if (func.args[1].arg_type.? != PseudoKey) {
+                    if (func.args[1].arg_type.? != PseudoKey and func.args[1].arg_type.? != *const PseudoKey) {
                         if (!emitted_signature) {
                             errors = errors ++ lazy.err_invalid_eql_signature;
                             emitted_signature = true;
                         }
                         errors = errors ++ lazy.deep_prefix ++ "Second parameter must be " ++ @typeName(PseudoKey) ++ ", but is " ++ @typeName(func.args[1].arg_type.?);
                     }
-                    if (func.args[2].arg_type.? != Key) {
+                    if (func.args[2].arg_type.? != Key and func.args[2].arg_type.? != *const Key) {
                         if (!emitted_signature) {
                             errors = errors ++ lazy.err_invalid_eql_signature;
                             emitted_signature = true;
@@ -338,6 +338,21 @@ pub fn verifyContext(comptime RawContext: type, comptime PseudoKey: type, compti
         }
     }
 }
+
+fn ref_hash(comptime Context: type) bool {
+    comptime {
+        const func = @typeInfo(@TypeOf(Context.hash)).Fn;
+        return std.meta.trait.isSingleItemPtr(func.args[1].arg_type.?);
+    }
+}
+
+fn ref_eql(comptime Context: type) bool {
+    comptime {
+        const func = @typeInfo(@TypeOf(Context.eql)).Fn;
+        return std.meta.trait.isSingleItemPtr(func.args[2].arg_type.?);
+    }
+}
+
 
 /// General purpose hash table.
 /// No order is guaranteed and any modification invalidates live iterators.
@@ -1004,7 +1019,7 @@ pub fn HashMapUnmanaged(
         pub fn putAssumeCapacityNoClobberContext(self: *Self, key: K, value: V, ctx: Context) void {
             assert(!self.containsContext(key, ctx));
 
-            const hash = ctx.hash(key);
+            const hash = if (comptime ref_hash(@TypeOf(ctx))) ctx.hash(&key) else ctx.hash(key);
             const mask = self.capacity() - 1;
             var idx = @truncate(usize, hash & mask);
 
@@ -1109,7 +1124,7 @@ pub fn HashMapUnmanaged(
 
             // If you get a compile error on this line, it means that your generic hash
             // function is invalid for these parameters.
-            const hash = ctx.hash(key);
+            const hash = if (comptime ref_hash(@TypeOf(ctx))) ctx.hash(&key) else ctx.hash(key);
             // verifyContext can't verify the return type of generic hash functions,
             // so we need to double-check it here.
             if (@TypeOf(hash) != Hash) {
@@ -1127,7 +1142,7 @@ pub fn HashMapUnmanaged(
                     const test_key = &self.keys()[idx];
                     // If you get a compile error on this line, it means that your generic eql
                     // function is invalid for these parameters.
-                    const eql = ctx.eql(key, test_key.*);
+                    const eql = if (comptime ref_eql(@TypeOf(ctx))) ctx.eql(&key, test_key) else ctx.eql(key, test_key.*);
                     // verifyContext can't verify the return type of generic eql functions,
                     // so we need to double-check it here.
                     if (@TypeOf(eql) != bool) {
@@ -1288,7 +1303,7 @@ pub fn HashMapUnmanaged(
 
             // If you get a compile error on this line, it means that your generic hash
             // function is invalid for these parameters.
-            const hash = ctx.hash(key);
+            const hash = if (comptime ref_hash(@TypeOf(ctx))) ctx.hash(&key) else ctx.hash(key);
             // verifyContext can't verify the return type of generic hash functions,
             // so we need to double-check it here.
             if (@TypeOf(hash) != Hash) {
@@ -1306,7 +1321,7 @@ pub fn HashMapUnmanaged(
                     const test_key = &self.keys()[idx];
                     // If you get a compile error on this line, it means that your generic eql
                     // function is invalid for these parameters.
-                    const eql = ctx.eql(key, test_key.*);
+                    const eql = if (comptime ref_eql(@TypeOf(ctx))) ctx.eql(&key, test_key) else ctx.eql(key, test_key.*);
                     // verifyContext can't verify the return type of generic eql functions,
                     // so we need to double-check it here.
                     if (@TypeOf(eql) != bool) {
