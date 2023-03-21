@@ -9,7 +9,7 @@ pub fn binarySearch(
     key: T,
     items: []const T,
     context: anytype,
-    comptime compareFn: fn (context: @TypeOf(context), lhs: T, rhs: T) math.Order,
+    comptime compareFn: fn (context: @TypeOf(context), lhs: *const T, rhs: *const T) math.Order,
 ) ?usize {
     var left: usize = 0;
     var right: usize = items.len;
@@ -18,7 +18,7 @@ pub fn binarySearch(
         // Avoid overflowing in the midpoint calculation
         const mid = left + (right - left) / 2;
         // Compare the key with the midpoint element
-        switch (compareFn(context, key, items[mid])) {
+        switch (compareFn(context, &key, &items[mid])) {
             .eq => return mid,
             .gt => left = mid + 1,
             .lt => right = mid,
@@ -78,16 +78,16 @@ pub fn insertionSort(
     comptime T: type,
     items: []T,
     context: anytype,
-    comptime lessThan: fn (context: @TypeOf(context), lhs: T, rhs: T) bool,
+    comptime lessThan: fn (context: @TypeOf(context), lhs: *const T, rhs: *const T) bool,
 ) void {
     var i: usize = 1;
     while (i < items.len) : (i += 1) {
-        const x = items[i];
+        const x = &items[i];
         var j: usize = i;
-        while (j > 0 and lessThan(context, x, items[j - 1])) : (j -= 1) {
+        while (j > 0 and lessThan(context, x, &items[j - 1])) : (j -= 1) {
             items[j] = items[j - 1];
         }
-        items[j] = x;
+        items[j] = x.*;
     }
 }
 
@@ -184,7 +184,7 @@ pub fn sort(
     comptime T: type,
     items: []T,
     context: anytype,
-    comptime lessThan: fn (context: @TypeOf(context), lhs: T, rhs: T) bool,
+    comptime lessThan: fn (context: @TypeOf(context), lhs: *const T, rhs: *const T) bool,
 ) void {
     // Implementation ported from https://github.com/BonzaiThePenguin/WikiSort/blob/master/WikiSort.c
     var cache: [512]T = undefined;
@@ -192,13 +192,13 @@ pub fn sort(
     if (items.len < 4) {
         if (items.len == 3) {
             // hard coded insertion sort
-            if (lessThan(context, items[1], items[0])) mem.swap(T, &items[0], &items[1]);
-            if (lessThan(context, items[2], items[1])) {
+            if (lessThan(context, &items[1], &items[0])) mem.swap(T, &items[0], &items[1]);
+            if (lessThan(context, &items[2], &items[1])) {
                 mem.swap(T, &items[1], &items[2]);
-                if (lessThan(context, items[1], items[0])) mem.swap(T, &items[0], &items[1]);
+                if (lessThan(context, &items[1], &items[0])) mem.swap(T, &items[0], &items[1]);
             }
         } else if (items.len == 2) {
-            if (lessThan(context, items[1], items[0])) mem.swap(T, &items[0], &items[1]);
+            if (lessThan(context, &items[1], &items[0])) mem.swap(T, &items[0], &items[1]);
         }
         return;
     }
@@ -305,16 +305,16 @@ pub fn sort(
                     var A2 = iterator.nextRange();
                     var B2 = iterator.nextRange();
 
-                    if (lessThan(context, items[B1.end - 1], items[A1.start])) {
+                    if (lessThan(context, &items[B1.end - 1], &items[A1.start])) {
                         // the two ranges are in reverse order, so copy them in reverse order into the cache
                         mem.copy(T, cache[B1.length()..], items[A1.start..A1.end]);
                         mem.copy(T, cache[0..], items[B1.start..B1.end]);
-                    } else if (lessThan(context, items[B1.start], items[A1.end - 1])) {
+                    } else if (lessThan(context, &items[B1.start], &items[A1.end - 1])) {
                         // these two ranges weren't already in order, so merge them into the cache
                         mergeInto(T, items, A1, B1, context, lessThan, cache[0..]);
                     } else {
                         // if A1, B1, A2, and B2 are all in order, skip doing anything else
-                        if (!lessThan(context, items[B2.start], items[A2.end - 1]) and !lessThan(context, items[A2.start], items[B1.end - 1])) continue;
+                        if (!lessThan(context, &items[B2.start], &items[A2.end - 1]) and !lessThan(context, &items[A2.start], &items[B1.end - 1])) continue;
 
                         // copy A1 and B1 into the cache in the same order
                         mem.copy(T, cache[0..], items[A1.start..A1.end]);
@@ -323,11 +323,11 @@ pub fn sort(
                     A1 = Range.init(A1.start, B1.end);
 
                     // merge A2 and B2 into the cache
-                    if (lessThan(context, items[B2.end - 1], items[A2.start])) {
+                    if (lessThan(context, &items[B2.end - 1], &items[A2.start])) {
                         // the two ranges are in reverse order, so copy them in reverse order into the cache
                         mem.copy(T, cache[A1.length() + B2.length() ..], items[A2.start..A2.end]);
                         mem.copy(T, cache[A1.length()..], items[B2.start..B2.end]);
-                    } else if (lessThan(context, items[B2.start], items[A2.end - 1])) {
+                    } else if (lessThan(context, &items[B2.start], &items[A2.end - 1])) {
                         // these two ranges weren't already in order, so merge them into the cache
                         mergeInto(T, items, A2, B2, context, lessThan, cache[A1.length()..]);
                     } else {
@@ -341,11 +341,11 @@ pub fn sort(
                     const A3 = Range.init(0, A1.length());
                     const B3 = Range.init(A1.length(), A1.length() + A2.length());
 
-                    if (lessThan(context, cache[B3.end - 1], cache[A3.start])) {
+                    if (lessThan(context, &cache[B3.end - 1], &cache[A3.start])) {
                         // the two ranges are in reverse order, so copy them in reverse order into the items
                         mem.copy(T, items[A1.start + A2.length() ..], cache[A3.start..A3.end]);
                         mem.copy(T, items[A1.start..], cache[B3.start..B3.end]);
-                    } else if (lessThan(context, cache[B3.start], cache[A3.end - 1])) {
+                    } else if (lessThan(context, &cache[B3.start], &cache[A3.end - 1])) {
                         // these two ranges weren't already in order, so merge them back into the items
                         mergeInto(T, cache[0..], A3, B3, context, lessThan, items[A1.start..]);
                     } else {
@@ -364,10 +364,10 @@ pub fn sort(
                     var A = iterator.nextRange();
                     var B = iterator.nextRange();
 
-                    if (lessThan(context, items[B.end - 1], items[A.start])) {
+                    if (lessThan(context, &items[B.end - 1], &items[A.start])) {
                         // the two ranges are in reverse order, so a simple rotation should fix it
                         mem.rotate(T, items[A.start..B.end], A.length());
-                    } else if (lessThan(context, items[B.start], items[A.end - 1])) {
+                    } else if (lessThan(context, &items[B.start], &items[A.end - 1])) {
                         // these two ranges weren't already in order, so we'll need to merge them!
                         mem.copy(T, cache[0..], items[A.start..A.end]);
                         mergeExternal(T, items, A, B, context, lessThan, cache[0..]);
@@ -632,10 +632,10 @@ pub fn sort(
                     }
                 }
 
-                if (lessThan(context, items[B.end - 1], items[A.start])) {
+                if (lessThan(context, &items[B.end - 1], &items[A.start])) {
                     // the two ranges are in reverse order, so a simple rotation should fix it
                     mem.rotate(T, items[A.start..B.end], A.length());
-                } else if (lessThan(context, items[A.end], items[A.end - 1])) {
+                } else if (lessThan(context, &items[A.end], &items[A.end - 1])) {
                     // these two ranges weren't already in order, so we'll need to merge them!
                     var findA: usize = undefined;
 
@@ -673,7 +673,7 @@ pub fn sort(
                         while (true) {
                             // if there's a previous B block and the first value of the minimum A block is <= the last value of the previous B block,
                             // then drop that minimum A block behind. or if there are no B blocks left then keep dropping the remaining A blocks.
-                            if ((lastB.length() > 0 and !lessThan(context, items[lastB.end - 1], items[indexA])) or blockB.length() == 0) {
+                            if ((lastB.length() > 0 and !lessThan(context, &items[lastB.end - 1], &items[indexA])) or blockB.length() == 0) {
                                 // figure out where to split the previous B block, and rotate it at the split
                                 const B_split = binaryFirst(T, items, items[indexA], lastB, context, lessThan);
                                 const B_remaining = lastB.end - B_split;
@@ -682,7 +682,7 @@ pub fn sort(
                                 var minA = blockA.start;
                                 findA = minA + block_size;
                                 while (findA < blockA.end) : (findA += block_size) {
-                                    if (lessThan(context, items[findA], items[minA])) {
+                                    if (lessThan(context, &items[findA], &items[minA])) {
                                         minA = findA;
                                     }
                                 }
@@ -815,7 +815,7 @@ fn mergeInPlace(
     A_arg: Range,
     B_arg: Range,
     context: anytype,
-    comptime lessThan: fn (@TypeOf(context), T, T) bool,
+    comptime lessThan: fn (@TypeOf(context), *const T, *const T) bool,
 ) void {
     if (A_arg.length() == 0 or B_arg.length() == 0) return;
 
@@ -864,7 +864,7 @@ fn mergeInternal(
     A: Range,
     B: Range,
     context: anytype,
-    comptime lessThan: fn (@TypeOf(context), T, T) bool,
+    comptime lessThan: fn (@TypeOf(context), *const T, *const T) bool,
     buffer: Range,
 ) void {
     // whenever we find a value to add to the final array, swap it with the value that's already in that spot
@@ -875,7 +875,7 @@ fn mergeInternal(
 
     if (B.length() > 0 and A.length() > 0) {
         while (true) {
-            if (!lessThan(context, items[B.start + B_count], items[buffer.start + A_count])) {
+            if (!lessThan(context, &items[B.start + B_count], &items[buffer.start + A_count])) {
                 mem.swap(T, &items[A.start + insert], &items[buffer.start + A_count]);
                 A_count += 1;
                 insert += 1;
@@ -908,14 +908,14 @@ fn findFirstForward(
     value: T,
     range: Range,
     context: anytype,
-    comptime lessThan: fn (@TypeOf(context), T, T) bool,
+    comptime lessThan: fn (@TypeOf(context), *const T, *const T) bool,
     unique: usize,
 ) usize {
     if (range.length() == 0) return range.start;
     const skip = math.max(range.length() / unique, @as(usize, 1));
 
     var index = range.start + skip;
-    while (lessThan(context, items[index - 1], value)) : (index += skip) {
+    while (lessThan(context, &items[index - 1], &value)) : (index += skip) {
         if (index >= range.end - skip) {
             return binaryFirst(T, items, value, Range.init(index, range.end), context, lessThan);
         }
@@ -930,14 +930,14 @@ fn findFirstBackward(
     value: T,
     range: Range,
     context: anytype,
-    comptime lessThan: fn (@TypeOf(context), T, T) bool,
+    comptime lessThan: fn (@TypeOf(context), *const T, *const T) bool,
     unique: usize,
 ) usize {
     if (range.length() == 0) return range.start;
     const skip = math.max(range.length() / unique, @as(usize, 1));
 
     var index = range.end - skip;
-    while (index > range.start and !lessThan(context, items[index - 1], value)) : (index -= skip) {
+    while (index > range.start and !lessThan(context, &items[index - 1], &value)) : (index -= skip) {
         if (index < range.start + skip) {
             return binaryFirst(T, items, value, Range.init(range.start, index), context, lessThan);
         }
@@ -952,14 +952,14 @@ fn findLastForward(
     value: T,
     range: Range,
     context: anytype,
-    comptime lessThan: fn (@TypeOf(context), T, T) bool,
+    comptime lessThan: fn (@TypeOf(context), *const T, *const T) bool,
     unique: usize,
 ) usize {
     if (range.length() == 0) return range.start;
     const skip = math.max(range.length() / unique, @as(usize, 1));
 
     var index = range.start + skip;
-    while (!lessThan(context, value, items[index - 1])) : (index += skip) {
+    while (!lessThan(context, &value, &items[index - 1])) : (index += skip) {
         if (index >= range.end - skip) {
             return binaryLast(T, items, value, Range.init(index, range.end), context, lessThan);
         }
@@ -974,14 +974,14 @@ fn findLastBackward(
     value: T,
     range: Range,
     context: anytype,
-    comptime lessThan: fn (@TypeOf(context), T, T) bool,
+    comptime lessThan: fn (@TypeOf(context), *const T, *const T) bool,
     unique: usize,
 ) usize {
     if (range.length() == 0) return range.start;
     const skip = math.max(range.length() / unique, @as(usize, 1));
 
     var index = range.end - skip;
-    while (index > range.start and lessThan(context, value, items[index - 1])) : (index -= skip) {
+    while (index > range.start and lessThan(context, &value, &items[index - 1])) : (index -= skip) {
         if (index < range.start + skip) {
             return binaryLast(T, items, value, Range.init(range.start, index), context, lessThan);
         }
@@ -996,7 +996,7 @@ fn binaryFirst(
     value: T,
     range: Range,
     context: anytype,
-    comptime lessThan: fn (@TypeOf(context), T, T) bool,
+    comptime lessThan: fn (@TypeOf(context), *const T, *const T) bool,
 ) usize {
     var curr = range.start;
     var size = range.length();
@@ -1005,8 +1005,8 @@ fn binaryFirst(
         const offset = size % 2;
 
         size /= 2;
-        const mid = items[curr + size];
-        if (lessThan(context, mid, value)) {
+        const mid = &items[curr + size];
+        if (lessThan(context, mid, &value)) {
             curr += size + offset;
         }
     }
@@ -1019,7 +1019,7 @@ fn binaryLast(
     value: T,
     range: Range,
     context: anytype,
-    comptime lessThan: fn (@TypeOf(context), T, T) bool,
+    comptime lessThan: fn (@TypeOf(context), *const T, *const T) bool,
 ) usize {
     var curr = range.start;
     var size = range.length();
@@ -1028,8 +1028,8 @@ fn binaryLast(
         const offset = size % 2;
 
         size /= 2;
-        const mid = items[curr + size];
-        if (!lessThan(context, value, mid)) {
+        const mid = &items[curr + size];
+        if (!lessThan(context, &value, mid)) {
             curr += size + offset;
         }
     }
@@ -1042,7 +1042,7 @@ fn mergeInto(
     A: Range,
     B: Range,
     context: anytype,
-    comptime lessThan: fn (@TypeOf(context), T, T) bool,
+    comptime lessThan: fn (@TypeOf(context), *const T, *const T) bool,
     into: []T,
 ) void {
     var A_index: usize = A.start;
@@ -1052,7 +1052,7 @@ fn mergeInto(
     var insert_index: usize = 0;
 
     while (true) {
-        if (!lessThan(context, from[B_index], from[A_index])) {
+        if (!lessThan(context, &from[B_index], &from[A_index])) {
             into[insert_index] = from[A_index];
             A_index += 1;
             insert_index += 1;
@@ -1080,7 +1080,7 @@ fn mergeExternal(
     A: Range,
     B: Range,
     context: anytype,
-    comptime lessThan: fn (@TypeOf(context), T, T) bool,
+    comptime lessThan: fn (@TypeOf(context), *const T, *const T) bool,
     cache: []T,
 ) void {
     // A fits into the cache, so use that instead of the internal buffer
@@ -1092,7 +1092,7 @@ fn mergeExternal(
 
     if (B.length() > 0 and A.length() > 0) {
         while (true) {
-            if (!lessThan(context, items[B_index], cache[A_index])) {
+            if (!lessThan(context, &items[B_index], &cache[A_index])) {
                 items[insert_index] = cache[A_index];
                 A_index += 1;
                 insert_index += 1;
@@ -1114,12 +1114,12 @@ fn swap(
     comptime T: type,
     items: []T,
     context: anytype,
-    comptime lessThan: fn (@TypeOf(context), lhs: T, rhs: T) bool,
+    comptime lessThan: fn (@TypeOf(context), lhs: *const T, rhs: *const T) bool,
     order: *[8]u8,
     x: usize,
     y: usize,
 ) void {
-    if (lessThan(context, items[y], items[x]) or ((order.*)[x] > (order.*)[y] and !lessThan(context, items[x], items[y]))) {
+    if (lessThan(context, &items[y], &items[x]) or ((order.*)[x] > (order.*)[y] and !lessThan(context, &items[x], &items[y]))) {
         mem.swap(T, &items[x], &items[y]);
         mem.swap(u8, &(order.*)[x], &(order.*)[y]);
     }
